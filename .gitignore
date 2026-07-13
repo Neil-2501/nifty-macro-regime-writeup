@@ -1,0 +1,31 @@
+# Block all code, notebooks, and data — this repo is write-up only
+*.py
+*.ipynb
+*.sh
+*.sql
+*.r
+*.R
+requirements*.txt
+Pipfile*
+poetry.lock
+environment.y*ml
+setup.py
+setup.cfg
+pyproject.toml
+
+# Data
+*.parquet
+*.csv
+*.json
+*.pkl
+*.pickle
+*.tsv
+*.xlsx
+data/
+datasets/
+
+# System
+.DS_Store
+.venv/
+venv/
+__pycache__/

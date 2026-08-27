@@ -6,8 +6,6 @@ A systematic macro-regime strategy for Indian markets. Production config (**v2.2
 
 *Research project. Backtest results, methodology, and known limitations documented below. Not deployed; not investment advice.*
 
-**Full implementation** (Python source, data artifacts, tests, and reproduction harness) **is in the companion code repository:** [github.com/Neil-2501/nifty-macro-regime](https://github.com/Neil-2501/nifty-macro-regime). This write-up is the narrative + methodology + results documentation, kept code-free intentionally. Every headline number in this document corresponds to a code path in the companion repo, and both READMEs are kept in sync (identical numbers, identical framing).
-
 ![Equity Curve](images/equity_curve.png)
 
 ---
@@ -313,7 +311,7 @@ Candidate 5 (basket + cash 50/50, N=40) has the best Sharpe and modest MaxDD dee
 
 **V8 stress-resilient basket bake-off (rejected).** A more sophisticated basket construction — ranking by mean return across prior bear windows only (no look-ahead), balanced beta band 0.6–1.1, fewer defensive-sector picks — was tested. It underperformed the V7 generic construction across FULL and OOS. Reason: bear-window resilience does not transfer across regimes (2008 defenders ≠ 2020 defenders ≠ 2022 defenders), and 11.9% of picks used inverse-vol fallback anyway when history was thin. V7 basket_cash_blend retained.
 
-Full bake-off harness (V7 and V8 rejected variant) is documented in the companion repo.
+Full bake-off harness covered both the V7 (production-selected) and V8 (stress-resilient, rejected) construction variants under an identical overlay framework, with the identity checks locking each configuration against a byte-reproducible baseline before any candidate was compared.
 
 **Data dependencies for basket construction (needed if rebuilding artifacts):**
 - `data/bse_pipeline/extended_fundamentals_v2.parquet` — fundamentals panel (bundled)
@@ -983,23 +981,25 @@ Beyond the tests documented above, several substantial research efforts have bee
 
 Root cause: the Mom30 index (a) is cap-weighted so avoids concentration in mid/small caps that get destroyed in factor rotations (2018 IL&FS crisis + LTCG-tax combined shock, 2022 quality selloff), (b) costs 6 bps/side vs our 15-30 bps/side, and (c) uses the same underlying momentum signal we do (rank_composite_risk_adj is reverse-engineered from NSE's methodology). The self-picked basket earns +2.3pp bull-only CAGR on average but pays back through -25% bull-only MaxDD vs the index's -8%.
 
-**Meaningful sub-finding from momentum-basket research**: the hard-rules quality gate (cfo > 0, np > 0, D/E ≤ 2) added +3.7pp OOS CAGR / +0.26 Sharpe over pure momentum. Quality filtering matters — just not enough to overcome the fundamental cost + diversification disadvantage vs a cheap index. The five bake-off iterations (V1 base → V2 quality-gated → V3 cost fixes → V4 individual-name risk → V5 vol-cap sweep) and the drawdown diagnostic that isolated the 2018-19 bleed to individual-name blowups (ALANKIT −75%, DCMSHRIRAM −29% inside our basket while the median stock gained +33% over the window) are in the companion repo.
+**Meaningful sub-finding from momentum-basket research**: the hard-rules quality gate (cfo > 0, np > 0, D/E ≤ 2) added +3.7pp OOS CAGR / +0.26 Sharpe over pure momentum. Quality filtering matters — just not enough to overcome the fundamental cost + diversification disadvantage vs a cheap index. Five stacked bake-off iterations were run (V1 pure momentum → V2 quality-gated → V3 realistic cost + persistence tests → V4 individual-name risk caps: pledging + vol cap + Novy-Marx quality-momentum combined score → V5 vol-cap sweep 30/40/50/60/no-cap). A drawdown diagnostic on the losing 2018-19 window isolated the failure to individual-name blowups inside an otherwise reasonable basket: while the median stock in the mid-crash-basket gained +33% over the peak-to-trough window, ALANKIT (−75%), DCMSHRIRAM (−29%), KAJARIACER (−23%), TRIVENI (−22%), and TTKPRESTIG (−11%) at 3.33% each dragged the whole basket down. Regime-flip friction contributed another ~10pp of the −36% drawdown (34 entry/exit events × 30 bps/side over 642 days).
 
 **Bull-side momentum basket status: NOT SHIPPED, but research ongoing.** Next iterations to try (documented here as roadmap, not built): sector cap (max 5 per sector, matching defensive-basket construction — would prevent 2018 mid-cap-chemicals concentration), inverse-vol weighting (real risk parity), momentum-crash detection (Daniel-Moskowitz signal), sector-neutral momentum (top-3 per sector). If any of these lets us match the Mom30 index on OOS Sharpe with MaxDD within 5pp of the index's -11%, the momentum basket ships. Currently it stays in `experiments/`.
 
 **Vol-targeting overlay — tested, rejected.** A volatility-scaling overlay on Config 7 was tested exhaustively (18 parameterizations across window / target-vol / cap / regime-gating dimensions). Initial results looked like +1pp CAGR — until leverage financing cost was properly charged (RBI repo + 200 bps spread on borrowed notional above 1×), which added ~170-200 bps/yr of drag and erased the gain. Best "delever-only" variant (cap=1.0×) improved rf-adjusted Sharpe by +0.07 but at cost of -3.2pp CAGR — not a good tradeoff. All levered variants (cap 1.5×+) LOST vs Config 7 after financing cost. Rejected. This is the strategy's canonical "rigor lesson": always charge the real cost of leverage before believing a levered backtest.
 
-**Quality as a standalone factor — tested, weak.** Buying names by pure quality score alone (no momentum) produced weak / non-monotonic returns across deciles. Quality only pays as an interaction with momentum (per Novy-Marx 2013). Documented in the companion repo's decile-analysis output.
+**Quality as a standalone factor — tested, weak.** Buying names by pure quality score alone (no momentum) produced weak / non-monotonic returns across deciles. Quality only pays as an interaction with momentum (per Novy-Marx 2013).
 
 **Stress-resilient basket (V8) — worse than V7 generic.** A more sophisticated defensive-basket construction ranking by mean return across prior bear windows only (no look-ahead) with balanced beta band 0.6–1.1 was tested. It underperformed the V7 generic construction across FULL and OOS. Reason: bear-window defensive leadership rotates (2008 defenders ≠ 2020 defenders ≠ 2022 defenders); tilting toward historical bear winners does not generalize. V7 basket_cash_blend retained.
 
 ---
 
-## Reproduce
+## Implementation & Reproducibility
 
-**Full implementation is in the companion repository: [github.com/Neil-2501/nifty-macro-regime](https://github.com/Neil-2501/nifty-macro-regime).**
+The production strategy runs a single-file backtest against a small set of macro data series (NIFTY 50, USDINR, India VIX, US 10-year Treasury yield, GOLDBEES.NS, NIFTY 200 Momentum 30) fetched daily via public sources, plus a bundled RBI repo-rate step function maintained from MPC press releases. The defensive quality basket relies on two small pre-computed artifacts (holdings per rebalance date + a daily basket-return series covering the full 2008–2026 window), which are regenerated from source fundamentals + a stock-price panel via a standalone rebuild routine. Regeneration takes ~2–3 minutes given the input data; the panel of adjusted-close prices for the top ~1,300 NSE names spanning 2007–2026 is the main data dependency and runs into the hundreds of MB.
 
-The companion repo contains the complete production Python code (`strategy.py`, `defensive_basket.py`), the two bundled runtime data artifacts for the defensive basket (holdings + daily-return series, ~200 KB total), the standalone rebuild script that regenerates those artifacts from source fundamentals + stock-price data, the identity-check verifier that confirms `enable_defensive_basket=False` reproduces the Config 7 baseline byte-exact and `enable_defensive_basket=True` reproduces R1, and the cross-country US validation harness (1995–2025 on DXY + US VIX analog substitutions). Market data is fetched at runtime via yfinance; runtime for a full end-to-end backtest is ~30–60 seconds. To rebuild the defensive-basket artifacts from source, the ~544 MB adjusted-close stock-price panel is required — fetch script included but is a multi-hour download. The rebuild itself takes ~2–3 minutes once inputs are in place. All numbers in this write-up correspond to code paths and configuration flags documented in the companion repo's `strategy.py` docstring.
+Two identity checks anchor reproducibility. With the defensive-basket overlay disabled, the strategy reproduces the v2.1 Config 7 baseline byte-for-byte (post-tax daily return series identical to within floating-point noise). With the overlay enabled, the strategy reproduces the R1 canonical numbers reported in this write-up (16.85% CAGR / rf-adjusted Sharpe 0.83 / MaxDD −13.92% through 2026-05-11). Both checks are re-runnable against fresh data pulls; if the checks drift, the underlying data source has changed and any comparison against the numbers in this document must be re-anchored before it is trusted.
+
+An end-to-end backtest run is ~30–60 seconds wall-clock (network-bound on the yfinance pull). A full grid re-tune of the defensive-basket persistence gate and allocation blend on the 2008–2016 in-sample window takes ~5 minutes. The cross-country US validation (1995–2025 on DXY + US VIX analog substitutions, verifying the slow-stress signal architecture catches 9 of 9 documented US stress events) runs as a separate check in a few minutes.
 
 ---
 
